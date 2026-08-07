@@ -1,26 +1,139 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
+/*
+ * --store-primary / --store-accent are written as inline custom properties on
+ * <html> by the root layout, from the Setting row. Everything below maps
+ * Tailwind utilities onto them, so changing a colour in the admin panel
+ * restyles the whole store with no rebuild.
+ */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-primary: var(--store-primary);
+  --color-primary-fg: var(--store-primary-fg);
+  --color-accent: var(--store-accent);
+  --color-accent-fg: var(--store-accent-fg);
+
+  --color-bg: var(--store-bg);
+  --color-surface: var(--store-surface);
+  --color-fg: var(--store-fg);
+  --color-muted: var(--store-muted);
+  --color-line: var(--store-line);
+
+  --font-store: var(--store-font);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root {
+  --store-primary: #111827;
+  --store-primary-fg: #ffffff;
+  --store-accent: #2563eb;
+  --store-accent-fg: #ffffff;
+
+  --store-bg: #ffffff;
+  --store-surface: #f8fafc;
+  --store-fg: #0f172a;
+  --store-muted: #64748b;
+  --store-line: #e2e8f0;
+
+  --store-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--store-bg);
+  color: var(--store-fg);
+  font-family: var(--store-font);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Focus ring that stays visible against any admin-chosen palette. */
+:focus-visible {
+  outline: 2px solid var(--store-accent);
+  outline-offset: 2px;
+}
+
+@utility container-store {
+  width: 100%;
+  margin-inline: auto;
+  padding-inline: 1rem;
+  max-width: 80rem;
+}
+
+/* Product descriptions and content pages are admin-authored markdown. */
+.prose-store {
+  line-height: 1.7;
+  color: var(--store-fg);
+}
+.prose-store > * + * {
+  margin-top: 1rem;
+}
+.prose-store h2 {
+  font-size: 1.375rem;
+  font-weight: 600;
+  margin-top: 2rem;
+}
+.prose-store h3 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin-top: 1.5rem;
+}
+.prose-store ul,
+.prose-store ol {
+  padding-left: 1.25rem;
+}
+.prose-store ul {
+  list-style: disc;
+}
+.prose-store ol {
+  list-style: decimal;
+}
+.prose-store li + li {
+  margin-top: 0.25rem;
+}
+.prose-store a {
+  color: var(--store-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.prose-store strong {
+  font-weight: 600;
+}
+.prose-store code {
+  background: var(--store-surface);
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  font-size: 0.875em;
+}
+.prose-store blockquote {
+  border-left: 3px solid var(--store-line);
+  padding-left: 1rem;
+  color: var(--store-muted);
+}
+.prose-store table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+}
+.prose-store th,
+.prose-store td {
+  border: 1px solid var(--store-line);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+.prose-store th {
+  background: var(--store-surface);
+  font-weight: 600;
+}
+.prose-store img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+}
+
+/* Hide number input spinners in the quantity stepper. */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
 }

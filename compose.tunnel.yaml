@@ -1,0 +1,22 @@
+# Optional Cloudflare Tunnel, so a locally-hosted store gets a public HTTPS URL
+# with no port forwarding.
+#
+#   1. Create a tunnel at https://one.dash.cloudflare.com → Networks → Tunnels
+#   2. Point its public hostname at  http://web:3000
+#   3. Put the token in .env as TUNNEL_TOKEN, and set NEXT_PUBLIC_SITE_URL to
+#      the public hostname
+#   4. docker compose -f compose.yaml -f compose.tunnel.yaml --profile tunnel up -d
+#
+# For a throwaway URL with no account, skip this file and just run:
+#   cloudflared tunnel --url http://localhost:3000
+
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    profiles: ["tunnel"]
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?TUNNEL_TOKEN is required for the tunnel profile}
+    depends_on:
+      - web

@@ -1,0 +1,406 @@
+// Storefront schema.
+// The "fits any product type" requirement is carried by two things:
+//   - Category.attributeSchema  -> admin-defined custom fields, stored on Product.attributes
+//   - ProductVariant            -> option combinations (Size x Color, 250g/500g, ...)
+// Money is always integer minor units (cents/paisa). Never floats.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------- store config
+
+// Single row, id = "default". Everything here is editable from /admin/settings.
+model Setting {
+  id String @id @default("default")
+
+  storeName   String  @default("My Store")
+  tagline     String?
+  logoUrl     String?
+  faviconUrl  String?
+
+  primaryColor String @default("#111827")
+  accentColor  String @default("#2563eb")
+  fontFamily   String @default("sans")
+
+  currency       String @default("USD")
+  currencySymbol String @default("$")
+  locale         String @default("en-US")
+  taxRatePct     Float  @default(0)
+  taxInclusive   Boolean @default(false)
+
+  contactEmail   String?
+  contactPhone   String?
+  contactAddress String?
+  socials        Json    @default("{}")
+
+  // Ordered [{ id, type, props }] rendered by components/sections/registry.tsx
+  homeSections Json @default("[]")
+
+  seoTitle       String?
+  seoDescription String?
+
+  orderPrefix String @default("ORD")
+
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------- catalog
+
+model Category {
+  id          String  @id @default(cuid())
+  name        String
+  slug        String  @unique
+  description String?
+  imageUrl    String?
+  sortOrder   Int     @default(0)
+  active      Boolean @default(true)
+
+  parentId String?
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children Category[] @relation("CategoryTree")
+
+  // [{ key, label, type: text|number|select|multiselect|boolean, options?, required, filterable, unit? }]
+  attributeSchema Json @default("[]")
+
+  products Product[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([parentId])
+  @@index([active, sortOrder])
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+model Product {
+  id          String        @id @default(cuid())
+  title       String
+  slug        String        @unique
+  description String        @default("")
+  status      ProductStatus @default(DRAFT)
+
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  images Json     @default("[]") // string[] of URLs, first is the primary
+  tags   String[] @default([])
+
+  // Values keyed by Category.attributeSchema[].key
+  attributes Json @default("{}")
+
+  basePriceCents    Int
+  comparePriceCents Int?
+  taxable           Boolean @default(true)
+  weightGrams       Int?
+
+  featured Boolean @default(false)
+
+  seoTitle       String?
+  seoDescription String?
+
+  optionGroups OptionGroup[]
+  variants     ProductVariant[]
+  orderItems   OrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([categoryId, status])
+  @@index([featured, status])
+}
+
+// Drives the variant picker on the product page: name="Size", values=["S","M","L"]
+model OptionGroup {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name      String
+  values    String[] @default([])
+  sortOrder Int      @default(0)
+
+  @@unique([productId, name])
+  @@index([productId])
+}
+
+// Every product has at least one variant, even when it has no options
+// ("Default"). Stock and checkout therefore have exactly one code path.
+model ProductVariant {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  name    String @default("Default")
+  options Json   @default("{}") // { "Size": "M", "Color": "Red" }
+
+  priceCents Int? // null -> inherit Product.basePriceCents
+  sku        String?
+  stock      Int     @default(0)
+  imageUrl   String?
+  sortOrder  Int     @default(0)
+  active     Boolean @default(true)
+
+  cartItems CartItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([productId, sku])
+  @@index([productId])
+}
+
+// ---------------------------------------------------------------- cart
+
+model Cart {
+  id    String @id @default(cuid())
+  token String @unique // value of the cart_token cookie
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  items CartItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model CartItem {
+  id     String @id @default(cuid())
+  cartId String
+  cart   Cart   @relation(fields: [cartId], references: [id], onDelete: Cascade)
+
+  variantId String
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  qty Int @default(1)
+
+  createdAt DateTime @default(now())
+
+  @@unique([cartId, variantId])
+  @@index([cartId])
+}
+
+// ---------------------------------------------------------------- orders
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+  REFUNDED
+}
+
+enum PaymentMethod {
+  COD
+  MANUAL
+}
+
+model Order {
+  id     String @id @default(cuid())
+  number String @unique
+
+  status        OrderStatus   @default(PENDING)
+  paymentStatus PaymentStatus @default(UNPAID)
+  paymentMethod PaymentMethod @default(COD)
+
+  customerName String
+  phone        String
+  email        String?
+  address      Json // { line1, line2?, city, region?, postalCode?, country }
+  note         String?
+
+  subtotalCents Int
+  shippingCents Int @default(0)
+  discountCents Int @default(0)
+  taxCents      Int @default(0)
+  totalCents    Int
+
+  couponCode   String?
+  shippingName String?
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  items  OrderItem[]
+  events OrderEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([userId])
+  @@index([phone])
+}
+
+// Snapshotted on purchase: editing a product later must never rewrite history.
+model OrderItem {
+  id      String @id @default(cuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  variantId String?
+
+  titleSnapshot   String
+  optionsSnapshot Json    @default("{}")
+  imageSnapshot   String?
+  skuSnapshot     String?
+
+  unitPriceCents Int
+  qty            Int
+
+  @@index([orderId])
+}
+
+model OrderEvent {
+  id      String @id @default(cuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  type String // created | status_changed | payment_changed | note
+  note String?
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId, createdAt])
+}
+
+// ---------------------------------------------------------------- users
+
+enum Role {
+  ADMIN
+  STAFF
+  CUSTOMER
+}
+
+model User {
+  id           String  @id @default(cuid())
+  email        String  @unique
+  passwordHash String
+  name         String?
+  phone        String?
+  role         Role    @default(CUSTOMER)
+
+  addresses Address[]
+  orders    Order[]
+  carts     Cart[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Address {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  label      String?
+  line1      String
+  line2      String?
+  city       String
+  region     String?
+  postalCode String?
+  country    String  @default("")
+  phone      String?
+  isDefault  Boolean @default(false)
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------- promos & shipping
+
+enum CouponType {
+  PERCENT
+  FIXED
+}
+
+model Coupon {
+  code String @id
+
+  type  CouponType @default(PERCENT)
+  value Int // percent (1-100) or minor units, per `type`
+
+  minOrderCents Int?
+  maxUses       Int?
+  usedCount     Int  @default(0)
+
+  startsAt  DateTime?
+  expiresAt DateTime?
+  active    Boolean   @default(true)
+
+  createdAt DateTime @default(now())
+}
+
+enum ShippingRateType {
+  FLAT
+  FREE_OVER
+  WEIGHT
+}
+
+model ShippingRate {
+  id   String           @id @default(cuid())
+  name String
+  type ShippingRateType @default(FLAT)
+
+  amountCents    Int      @default(0)
+  thresholdCents Int? // FREE_OVER: free at/above this subtotal
+  perKgCents     Int? // WEIGHT: added per kg on top of amountCents
+  regions        String[] @default([]) // empty = applies everywhere
+
+  sortOrder Int     @default(0)
+  active    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------- content & media
+
+model Page {
+  id      String  @id @default(cuid())
+  slug    String  @unique
+  title   String
+  body    String  @default("") // markdown
+  published    Boolean @default(true)
+  showInFooter Boolean @default(true)
+  sortOrder    Int     @default(0)
+
+  seoDescription String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MediaAsset {
+  id   String @id @default(cuid())
+  key  String @unique // storage key, e.g. 2026/08/abc123.webp
+  url  String
+  mime String
+  sizeBytes Int
+  width     Int?
+  height    Int?
+  alt       String?
+
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
