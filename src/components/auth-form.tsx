@@ -23,8 +23,15 @@ export function LoginForm({
   return (
     <form action={formAction} className="space-y-4">
       {next && <input type="hidden" name="next" value={next} />}
-      {state && !state.ok && <Alert tone="error">{state.error}</Alert>}
 
+      {/* CHANGED:
+      Tell the server action that this is an admin login attempt.
+      The server still verifies the user's role; this hidden field
+      is only used to identify which login flow was requested.
+  */}
+      {admin && <input type="hidden" name="admin" value="true" />}
+
+      {state && !state.ok && <Alert tone="error">{state.error}</Alert>}
       <Field label="Email" required error={errors.email} htmlFor="email">
         <Input id="email" name="email" type="email" autoComplete="email" required autoFocus />
       </Field>

@@ -31,7 +31,7 @@ model Setting {
   currency       String @default("USD")
   currencySymbol String @default("$")
   locale         String @default("en-US")
-  taxRatePct     Float  @default(0)
+  taxRatePct     Float   @default(0)
   taxInclusive   Boolean @default(false)
 
   contactEmail   String?
@@ -141,7 +141,7 @@ model ProductVariant {
   productId String
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  name    String @default("Default")
+  name    String  @default("Default")
   options Json   @default("{}") // { "Size": "M", "Color": "Red" }
 
   priceCents Int? // null -> inherit Product.basePriceCents
@@ -262,7 +262,7 @@ model OrderItem {
   variantId String?
 
   titleSnapshot   String
-  optionsSnapshot Json    @default("{}")
+  optionsSnapshot Json   @default("{}")
   imageSnapshot   String?
   skuSnapshot     String?
 
@@ -307,6 +307,29 @@ model User {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------- authentication / login protection
+
+// Tracks failed login attempts for both account-based and IP-based
+// brute-force protection.
+//
+// `key` examples:
+//   account:user@example.com
+//   ip:192.168.1.100
+//
+// Records are temporary security state and have no relation to User,
+// because we also record attempts for nonexistent email addresses.
+model LoginAttempt {
+  id           String    @id @default(cuid())
+  key          String    @unique
+  attempts     Int       @default(0)
+  blockedUntil DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // Helps efficiently find/remove expired lockout records.
+  @@index([blockedUntil])
 }
 
 model Address {
